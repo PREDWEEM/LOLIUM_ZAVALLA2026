@@ -107,6 +107,8 @@ def _low_emergence_figure_2pct(
     highlighted["EMERREL_PCT"] = highlighted["EMERREL"] * 100.0
 
     if not highlighted.empty:
+        # La traza se agrega al final para que los círculos queden por encima de
+        # barras y líneas. Solo se incluyen fechas sin área de campana pintada.
         figure.add_trace(
             go.Scatter(
                 x=highlighted["Fecha"],
