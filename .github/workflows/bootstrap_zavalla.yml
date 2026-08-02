@@ -1,405 +1,53 @@
-name: Inicializar repositorio independiente de Zavalla
+name: Estado de migración de Zavalla
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: bootstrap-zavalla
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  migrar:
+  verificar:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
 
     steps:
-      - name: Descargar repositorio nuevo
+      - name: Descargar repositorio independiente
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Copiar aplicación validada
+      - name: Verificar separación de repositorios
         shell: bash
         run: |
           set -euo pipefail
-          git clone --depth 1 https://github.com/PREDWEEM/LOLIUMZAVALLA.git /tmp/origen
-          rsync -a --exclude='.git' --exclude='.github' /tmp/origen/ ./
 
-          mkdir -p data/meteo_sitios tests
-          find data/meteo_sitios -maxdepth 1 -type f ! -name 'zavalla.csv' -delete || true
-          rm -rf data/inspecciones data/selector tests
-          rm -f data/inspecciones_campo.csv data/selector_estado.json
-          mkdir -p tests
-
-          if [[ ! -s data/meteo_sitios/zavalla.csv ]]; then
-            cp meteo_daily.csv data/meteo_sitios/zavalla.csv
-          fi
-
-      - name: Limitar el registro a Zavalla
-        shell: bash
-        run: |
-          cat > sitios_lolium.py <<'PY'
-          from __future__ import annotations
-
-          from dataclasses import asdict, dataclass
-          from pathlib import Path
-
-
-          @dataclass(frozen=True)
-          class LoliumSite:
-              slug: str
-              nombre: str
-              provincia: str
-              latitud: float
-              longitud: float
-              repositorio: str
-              timezone: str = "America/Argentina/Cordoba"
-              usa_siga_historico: bool = False
-              rama_meteo: str = "main"
-              archivo_meteo: str = "meteo_daily.csv"
-              modelo_operativo: str = "con_lag"
-              lag_operativo_dias: int = 15
-
-              @property
-              def etiqueta(self) -> str:
-                  return f"{self.nombre} ({self.provincia})"
-
-              @property
-              def repository_url(self) -> str:
-                  return f"https://github.com/{self.repositorio}"
-
-              @property
-              def raw_meteo_url(self) -> str:
-                  return (
-                      f"https://raw.githubusercontent.com/{self.repositorio}/"
-                      f"{self.rama_meteo}/{self.archivo_meteo}"
-                  )
-
-              @property
-              def modelo_operativo_etiqueta(self) -> str:
-                  return f"Con lag fijo de {self.lag_operativo_dias} días"
-
-              def meteo_path(self, base: str | Path = ".") -> Path:
-                  return Path(base) / "data" / "meteo_sitios" / "zavalla.csv"
-
-              def inspections_path(self, base: str | Path = ".") -> Path:
-                  return Path(base) / "data" / "inspecciones" / "zavalla.csv"
-
-              def selector_state_path(self, base: str | Path = ".") -> Path:
-                  return Path(base) / "data" / "selector" / "zavalla.json"
-
-              def to_dict(self) -> dict:
-                  return asdict(self)
-
-
-          ZAVALLA = LoliumSite(
-              slug="zavalla",
-              nombre="Zavalla",
-              provincia="Santa Fe",
-              latitud=-33.02157,
-              longitud=-60.87930,
-              repositorio="PREDWEEM/LOLIUM_ZAVALLA2026",
-              timezone="America/Argentina/Cordoba",
-              modelo_operativo="con_lag",
-              lag_operativo_dias=15,
+          required=(
+            app.py
+            app_zavalla.py
+            sitios_lolium.py
+            config_zavalla.py
+            predweem_core.py
+            update_meteo.py
+            update_meteo_core.py
+            meteo_daily.csv
+            IW.npy
+            bias_IW.npy
+            LW.npy
+            bias_out.npy
           )
 
-          SITES: dict[str, LoliumSite] = {"zavalla": ZAVALLA}
-          DEFAULT_SITE_SLUG = "zavalla"
-
-
-          def get_site(slug: str = DEFAULT_SITE_SLUG) -> LoliumSite:
-              normalized = str(slug or DEFAULT_SITE_SLUG).strip().lower()
-              if normalized != DEFAULT_SITE_SLUG:
-                  raise KeyError(f"Este repositorio solo admite Zavalla: {slug}")
-              return ZAVALLA
-
-
-          def ordered_sites() -> list[LoliumSite]:
-              return [ZAVALLA]
-          PY
-
-      - name: Crear configuración local
-        shell: bash
-        run: |
-          cat > config_zavalla.py <<'PY'
-          from __future__ import annotations
-
-          from dataclasses import dataclass
-
-
-          @dataclass(frozen=True)
-          class SiteCalibration:
-              slug: str = "zavalla"
-              cobertura_predeterminada_pct: int = 30
-              wmax_predeterminado_mm: float = 20.0
-              exponente_kr_predeterminado: float = 0.0
-              latencia_jd: int = 25
-              ventana_termica_dias: int = 5
-              umbral_termoinhibicion_c: float = 24.0
-              umbral_termoinhibicion_con_lag_c: float = 20.0
-              ventana_lluvia_dias: int = 3
-              umbral_choque_hidrico_mm: float = 45.0
-              fin_choque_hidrico_jd: int = 110
-              techo_choque_hidrico: float = 0.75
-              umbral_primer_pico: float = 0.20
-              lag_candidato_dias: int = 15
-              decaimiento_activo: bool = False
-              decaimiento_tau_dias: float = 1.0
-              decaimiento_beta: float = 1.0
-              decaimiento_intensidad: float = 0.0
-              modelo_referencia_local: str = "con_lag"
-              repositorio_referencia: str = "PREDWEEM/LOLIUM_ZAVALLA2026"
-              archivo_motor_referencia: str = "predweem_core.py"
-
-
-          ZAVALLA_CALIBRATION = SiteCalibration()
-          SITE_CALIBRATIONS = {"zavalla": ZAVALLA_CALIBRATION}
-
-
-          def get_site_calibration(slug: str | None = None) -> SiteCalibration:
-              normalized = str(slug or "zavalla").strip().lower()
-              if normalized != "zavalla":
-                  raise KeyError(f"Este repositorio solo admite Zavalla: {slug}")
-              return ZAVALLA_CALIBRATION
-
-
-          @dataclass(frozen=True)
-          class ZavallaConfig:
-              nombre_sitio: str = "Zavalla, Santa Fe"
-              latitud: float = -33.02157
-              longitud: float = -60.87930
-              timezone: str = "America/Argentina/Cordoba"
-
-              latencia_jd: int = 25
-              ventana_termica_dias: int = 5
-              umbral_termoinhibicion_c: float = 24.0
-              umbral_termoinhibicion_con_lag_c: float = 20.0
-              ventana_lluvia_dias: int = 3
-              umbral_choque_hidrico_mm: float = 45.0
-              fin_choque_hidrico_jd: int = 110
-              techo_choque_hidrico: float = 0.75
-
-              cobertura_predeterminada_pct: int = 30
-              wmax_predeterminado_mm: float = 20.0
-              exponente_kr_predeterminado: float = 0.0
-              p50_hidrico: float = 0.30
-              pendiente_hidrica: float = 10.0
-              corte_hidrico: float = 0.20
-
-              umbral_primer_pico: float = 0.20
-              lag_candidato_dias: int = 15
-              tolerancia_sin_lag_dias: int = 4
-              tolerancia_lag_dias: int = 5
-              densidad_confirmacion_pl_m2: float = 0.5
-
-              decaimiento_activo: bool = False
-              decaimiento_tau_dias: float = 1.0
-              decaimiento_beta: float = 1.0
-              decaimiento_intensidad: float = 0.0
-              modelo_referencia_local: str = "con_lag"
-
-              t_base_c: float = 2.0
-              t_optima_c: float = 20.0
-              t_critica_c: float = 30.0
-              tt_control_cd: float = 600.0
-              tt_limite_cd: float = 800.0
-
-
-          CONFIG = ZavallaConfig()
-          PY
-
-      - name: Crear entrada exclusiva de Zavalla
-        shell: bash
-        run: |
-          cat > app_zavalla.py <<'PY'
-          from __future__ import annotations
-
-          from typing import Any
-
-          import streamlit as st
-
-          import app_fuente_hibrida as base
-          from sitios_lolium import DEFAULT_SITE_SLUG
-
-
-          def run() -> None:
-              original_page_config = st.set_page_config
-              original_title = st.title
-              original_caption = st.caption
-              original_selectbox = st.selectbox
-
-              def local_page_config(*args: Any, **kwargs: Any):
-                  kwargs["page_title"] = "PREDWEEM LOLIUM — Zavalla 2026"
-                  kwargs.setdefault("page_icon", "🌾")
-                  kwargs.setdefault("layout", "wide")
-                  return original_page_config(*args, **kwargs)
-
-              def local_title(body: Any, *args: Any, **kwargs: Any):
-                  if isinstance(body, str) and "Plataforma multisitio" in body:
-                      body = "🌾 PREDWEEM LOLIUM — Zavalla 2026"
-                  return original_title(body, *args, **kwargs)
-
-              def local_caption(body: Any, *args: Any, **kwargs: Any):
-                  if isinstance(body, str):
-                      if body.startswith("Predicción operativa de emergencia"):
-                          body = (
-                              "Predicción operativa de emergencia de Lolium para "
-                              "Zavalla, Santa Fe, con meteorología híbrida y modelo "
-                              "local con lag fijo de 15 días."
-                          )
-                      elif body.startswith("Política automática:"):
-                          body = (
-                              "Modelo local de Zavalla: lag fijo de 15 días, "
-                              "calibración específica y sin selección multisitio."
-                          )
-                  return original_caption(body, *args, **kwargs)
-
-              def local_selectbox(label: Any, options: Any, *args: Any, **kwargs: Any):
-                  if str(label) == "Seleccionar sitio":
-                      key = str(kwargs.get("key", "selected_lolium_site"))
-                      st.session_state[key] = DEFAULT_SITE_SLUG
-                      return DEFAULT_SITE_SLUG
-                  return original_selectbox(label, options, *args, **kwargs)
-
-              st.set_page_config = local_page_config
-              st.title = local_title
-              st.caption = local_caption
-              st.selectbox = local_selectbox
-              try:
-                  base.run()
-              finally:
-                  st.set_page_config = original_page_config
-                  st.title = original_title
-                  st.caption = original_caption
-                  st.selectbox = original_selectbox
-          PY
-
-          cat > app.py <<'PY'
-          from app_zavalla import run
-
-
-          if __name__ == "__main__":
-              run()
-          PY
-
-      - name: Adaptar el estado meteorológico
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("update_meteo_core.py")
-          text = path.read_text(encoding="utf-8")
-          text = text.replace(
-              '"modo": "HIBRIDO_ZAVALLA_Y_COPIA_EXACTA_MULTISITIO"',
-              '"modo": "HIBRIDO_ZAVALLA_INDEPENDIENTE"',
-          )
-          text = text.replace(
-              " Los demás sitios conservan copia exacta de sus repositorios.",
-              "",
-          )
-          text = text.replace(
-              "Actualización terminada: Zavalla híbrido y ",
-              "Actualización terminada: Zavalla híbrido independiente; ",
-          )
-          path.write_text(text, encoding="utf-8")
-          PY
-
-      - name: Crear pruebas locales
-        shell: bash
-        run: |
-          cat > tests/test_zavalla_local.py <<'PY'
-          import math
-
-          import update_meteo as meteo
-          from sitios_lolium import DEFAULT_SITE_SLUG, SITES, get_site, ordered_sites
-
-
-          def test_repositorio_contiene_un_solo_sitio():
-              assert DEFAULT_SITE_SLUG == "zavalla"
-              assert list(SITES) == ["zavalla"]
-              assert ordered_sites() == [get_site()]
-              assert get_site().repositorio == "PREDWEEM/LOLIUM_ZAVALLA2026"
-              assert get_site().lag_operativo_dias == 15
-
-
-          def test_precipitacion_negativa_se_descarta():
-              assert math.isnan(meteo._safe_precipitation_mm(-1.0, "mm"))
-          PY
-
-      - name: Documentar repositorio independiente
-        shell: bash
-        run: |
-          cat > README.md <<'MD'
-          # PREDWEEM LOLIUM — Zavalla 2026
-
-          Repositorio independiente del modelo operativo PREDWEEM para **Zavalla, Santa Fe**.
-
-          - Coordenadas: `-33.02157, -60.87930`.
-          - Modelo operativo: lag fijo de 15 días.
-          - Cobertura de rastrojo ajustable.
-          - Umbral operativo: `EMERREL >= 0.0001`.
-          - Ventana fenológica: 600–800 °Cd.
-          - Meteorología: SMN Rosario Aero → NOAA → ECMWF Archive → ECMWF Forecast.
-          - Actualización automática diaria: 07:30 de Argentina.
-
-          ```bash
-          python -m pip install -r requirements.txt
-          python update_meteo.py
-          streamlit run app.py
-          ```
-
-          La versión multisitio previa se conserva en la rama
-          `multisitio-legacy-20260802` de `PREDWEEM/LOLIUMZAVALLA`.
-
-          **PREDWEEM by Guillermo R. Chantre**
-          MD
-
-      - name: Probar migración
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pip install --disable-pip-version-check -r requirements.txt pytest
-          python -m py_compile \
-            app.py app_zavalla.py app_fuente_hibrida.py app_detalle_1pct.py \
-            app_umbral_operativo.py app_zoom_operativo.py app_multisitio.py \
-            app_multisitio_principal.py mapa_sitios.py config_zavalla.py \
-            sitios_lolium.py predweem_core.py visualizacion_pulsos.py \
-            visualizacion_operativa.py update_meteo.py update_meteo_core.py
-          python -m pytest tests/test_zavalla_local.py -q
+          for path in "${required[@]}"; do
+            if [[ ! -s "$path" ]]; then
+              echo "Archivo faltante o vacío: $path" >&2
+              exit 1
+            fi
+          done
 
           python - <<'PY'
-          from pathlib import Path
-          import numpy as np
+          from sitios_lolium import DEFAULT_SITE_SLUG, SITES, get_site
 
-          for name in ("IW.npy", "bias_IW.npy", "LW.npy", "bias_out.npy"):
-              path = Path(name)
-              if not path.is_file() or path.stat().st_size == 0:
-                  raise SystemExit(f"Activo ANN faltante: {name}")
-              np.load(path)
-          print("Activos ANN verificados.")
+          assert DEFAULT_SITE_SLUG == "zavalla"
+          assert set(SITES) == {"zavalla"}
+          assert get_site().repositorio == "PREDWEEM/LOLIUM_ZAVALLA2026"
+          print("Repositorio independiente de Zavalla verificado.")
+          print("Integrador regional: PREDWEEM/MULTISITIO")
           PY
-
-      - name: Publicar aplicación independiente
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Los workflows se publican fuera de este job para evitar que el
-          # GITHUB_TOKEN intente modificarlos sin permiso workflows.
-          git add -A -- . ':(exclude).github/workflows/**'
-
-          if git diff --cached --quiet; then
-            echo "No hay cambios de aplicación para publicar."
-            exit 0
-          fi
-
-          git commit -m "Separa modelo operativo independiente de Zavalla"
-          git pull --rebase origin main
-          git push origin main
