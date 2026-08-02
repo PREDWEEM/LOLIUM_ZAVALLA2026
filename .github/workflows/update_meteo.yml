@@ -1,0 +1,133 @@
+name: Actualizar meteorología de Zavalla
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 07:30 de Argentina (UTC-3).
+    - cron: "30 10 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: meteorologia-zavalla
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Descargar repositorio Zavalla
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: python -m pip install --disable-pip-version-check pandas requests pytest
+
+      - name: Probar configuración local
+        run: |
+          python -m py_compile update_meteo.py update_meteo_core.py sitios_lolium.py
+          python -m pytest tests/test_zavalla_local.py -q
+
+      - name: Actualizar serie híbrida
+        run: python update_meteo.py
+
+      - name: Validar serie de Zavalla
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          import pandas as pd
+
+          root = Path("meteo_daily.csv")
+          local = Path("data/meteo_sitios/zavalla.csv")
+          state_path = Path("data/estado_actualizacion_meteo.json")
+
+          for path in (root, local, state_path):
+              if not path.is_file() or path.stat().st_size <= 40:
+                  raise SystemExit(f"Archivo faltante o vacío: {path}")
+
+          if root.read_bytes() != local.read_bytes():
+              raise SystemExit("meteo_daily.csv no coincide con Zavalla")
+
+          data = pd.read_csv(root)
+          required = {
+              "Fecha", "TMAX", "TMIN", "Prec", "Fuente", "TipoDato",
+              "CalidadDato", "Emision", "Fuente_TMAX", "Fuente_TMIN",
+              "Fuente_Prec",
+          }
+          missing = sorted(required.difference(data.columns))
+          if missing:
+              raise SystemExit("Faltan columnas: " + ", ".join(missing))
+
+          data["Fecha"] = pd.to_datetime(data["Fecha"], errors="coerce")
+          for column in ("TMAX", "TMIN", "Prec"):
+              data[column] = pd.to_numeric(data[column], errors="coerce")
+
+          if data[list(required)].isna().any().any():
+              raise SystemExit("La serie contiene valores críticos nulos")
+          if data["Fecha"].duplicated().any():
+              raise SystemExit("La serie contiene fechas duplicadas")
+          if (data["TMAX"] < data["TMIN"]).any():
+              raise SystemExit("La serie contiene TMAX menor que TMIN")
+          if (data["Prec"] < 0).any():
+              raise SystemExit("La serie contiene precipitación negativa")
+
+          expected = pd.date_range(
+              data["Fecha"].min(), data["Fecha"].max(), freq="D"
+          )
+          if len(expected.difference(pd.DatetimeIndex(data["Fecha"]))):
+              raise SystemExit("La serie no es diaria y continua")
+
+          today = pd.Timestamp(
+              datetime.now(ZoneInfo("America/Argentina/Cordoba")).date()
+          )
+          current = data.loc[data["Fecha"] == today]
+          if current.empty:
+              raise SystemExit("La serie no contiene el día actual")
+          if not current["Fuente"].str.contains(
+              "OPEN_METEO_ECMWF_IFS_FORECAST", regex=False
+          ).all():
+              raise SystemExit("El día actual no está marcado como pronóstico")
+
+          state = json.loads(state_path.read_text(encoding="utf-8"))
+          if state.get("modo") != "HIBRIDO_ZAVALLA_INDEPENDIENTE":
+              raise SystemExit(f"Modo inesperado: {state.get('modo')}")
+          if set(state.get("sitios", {})) != {"zavalla"}:
+              raise SystemExit("El estado contiene sitios distintos de Zavalla")
+
+          print(data.groupby(["Fuente", "TipoDato"]).size().to_string())
+          PY
+
+      - name: Publicar actualización
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            meteo_daily.csv \
+            data/meteo_sitios/zavalla.csv \
+            data/estado_actualizacion_meteo.json
+
+          if git diff --cached --quiet; then
+            echo "La meteorología no cambió."
+            exit 0
+          fi
+
+          git commit -m "Actualiza meteorología híbrida de Zavalla"
+          git pull --rebase origin main
+          git push origin main
