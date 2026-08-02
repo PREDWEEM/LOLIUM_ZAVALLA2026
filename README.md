@@ -16,7 +16,6 @@ python update_meteo.py
 streamlit run app.py
 ```
 
-La versión multisitio previa se conserva en la rama
-`multisitio-legacy-20260802` de `PREDWEEM/LOLIUMZAVALLA`.
+La plataforma regional multisitio se mantiene en `PREDWEEM/MULTISITIO`. La copia histórica anterior a la separación permanece en la rama `multisitio-legacy-20260802` de ese repositorio.
 
 **PREDWEEM by Guillermo R. Chantre**
