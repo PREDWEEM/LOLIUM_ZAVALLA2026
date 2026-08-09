@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import app_zoom_operativo as base
+from visualizacion_horizonte_pronostico import construir_figura_horizonte
 
 
 EMERGENCE_THRESHOLD = 0.0001
@@ -17,6 +18,7 @@ LOW_EMERGENCE_THRESHOLD_PCT = EMERGENCE_THRESHOLD * 100.0
 _ORIGINAL_RENDER_EMERGENCE_SEMAPHORE = base._render_emergence_semaphore
 _ORIGINAL_EMERGENCE_FIGURE_WITH_PHENOLOGY = base._emergence_figure_with_phenology
 _LOW_PANEL_FIGURES: dict[int, go.Figure] = {}
+_FORECAST_PANEL_FIGURES: dict[int, tuple[pd.DataFrame, go.Figure]] = {}
 _SHOW_LOW_PANEL = True
 
 
@@ -140,11 +142,7 @@ def _low_emergence_figure(
                 y=trend["EMERREL_CAMPANA_PCT"],
                 customdata=trend["EMERREL_CAMPANA"],
                 mode="lines",
-                line={
-                    "color": "#64748b",
-                    "width": 1.7,
-                    "shape": "spline",
-                },
+                line={"color": "#64748b", "width": 1.7, "shape": "spline"},
                 fill="tozeroy",
                 fillcolor="rgba(96,165,250,0.11)",
                 opacity=0.8,
@@ -169,10 +167,7 @@ def _low_emergence_figure(
         line_width=1.6,
         line_dash="dot",
         line_color="#dc2626",
-        annotation_text=(
-            "<b>Umbral operativo</b> · "
-            "EMERREL ≥ 0,0001 (0,01 %)"
-        ),
+        annotation_text="<b>Umbral operativo</b> · EMERREL ≥ 0,0001 (0,01 %)",
         annotation_position="top left",
         annotation_font={"size": 10, "color": "#991b1b"},
     )
@@ -213,10 +208,7 @@ def _low_emergence_figure(
             "automargin": True,
         },
         yaxis={
-            "title": {
-                "text": "Intensidad relativa (%)",
-                "standoff": 10,
-            },
+            "title": {"text": "Intensidad relativa (%)", "standoff": 10},
             "range": [0.0, LOW_EMERGENCE_MAX_PCT],
             "tickmode": "array",
             "tickvals": [0.0, 0.01, 0.1, 0.5, 1.0, 1.5, 2.0],
@@ -250,10 +242,8 @@ def _low_emergence_figure(
 
 
 def _emergence_figure_with_low_panel(*args: Any, **kwargs: Any):
-    """Añade un panel sincronizado para valores EMERREL inferiores a 0,02."""
-    figure, x_range = _ORIGINAL_EMERGENCE_FIGURE_WITH_PHENOLOGY(
-        *args, **kwargs
-    )
+    """Añade detalle bajo y el horizonte futuro completo al gráfico principal."""
+    figure, x_range = _ORIGINAL_EMERGENCE_FIGURE_WITH_PHENOLOGY(*args, **kwargs)
 
     data = args[0] if args else kwargs.get("data")
     smooth = args[1] if len(args) > 1 else kwargs.get("smooth")
@@ -277,11 +267,16 @@ def _emergence_figure_with_low_panel(*args: Any, **kwargs: Any):
             today,
         )
 
+    if data is not None:
+        forecast_result = construir_figura_horizonte(data, str(site_name))
+        if forecast_result is not None:
+            _FORECAST_PANEL_FIGURES[id(figure)] = forecast_result
+
     return figure, x_range
 
 
 def _plotly_chart_with_low_panel(*args: Any, **kwargs: Any):
-    """Renderiza el detalle 0–2 % debajo del gráfico principal."""
+    """Renderiza detalle 0–2 % y horizonte futuro debajo del gráfico principal."""
     config = kwargs.get("config")
     if isinstance(config, Mapping) and config.get("scrollZoom"):
         kwargs["config"] = base._config_with_zoom(config)
@@ -306,15 +301,37 @@ def _plotly_chart_with_low_panel(*args: Any, **kwargs: Any):
                 },
             }
         )
-        base._ORIGINAL_PLOTLY_CHART(
-            low_figure,
-            width="stretch",
-            config=low_config,
-        )
+        base._ORIGINAL_PLOTLY_CHART(low_figure, width="stretch", config=low_config)
         st.caption(
             "Ampliación de EMERREL 0–0,02 (0–2 %). "
             "La línea roja punteada indica el umbral operativo "
             "EMERREL ≥ 0,0001 (0,01 %)."
+        )
+
+    forecast_panel = _FORECAST_PANEL_FIGURES.pop(id(figure), None)
+    if forecast_panel is not None:
+        forecast, forecast_figure = forecast_panel
+        start = pd.Timestamp(forecast["Fecha"].min())
+        end = pd.Timestamp(forecast["Fecha"].max())
+        st.markdown("##### 🔭 Pronóstico de emergencia — horizonte completo")
+        st.caption(
+            f"Zavalla: {len(forecast)} días meteorológicos disponibles, "
+            f"del {start.strftime('%d-%m-%Y')} al {end.strftime('%d-%m-%Y')}. "
+            "Se muestran únicamente las fechas presentes en la serie operativa; "
+            "no se agregan ni extrapolan días."
+        )
+        forecast_config = base._config_with_zoom(
+            {
+                "displaylogo": False,
+                "responsive": True,
+                "scrollZoom": True,
+                "modeBarButtonsToRemove": ["lasso2d", "select2d"],
+            }
+        )
+        base._ORIGINAL_PLOTLY_CHART(
+            forecast_figure,
+            width="stretch",
+            config=forecast_config,
         )
 
     semaphore = base._figure_meta(figure).get(base._SEMAPHORE_META_KEY)
@@ -336,6 +353,7 @@ def run() -> None:
     original_toggle = st.toggle
 
     _LOW_PANEL_FIGURES.clear()
+    _FORECAST_PANEL_FIGURES.clear()
     _SHOW_LOW_PANEL = True
 
     def toggle_with_operational_defaults(*args: Any, **kwargs: Any):
@@ -381,3 +399,4 @@ def run() -> None:
         base._emergence_figure_with_phenology = original_emergence_wrapper
         st.toggle = original_toggle
         _LOW_PANEL_FIGURES.clear()
+        _FORECAST_PANEL_FIGURES.clear()
