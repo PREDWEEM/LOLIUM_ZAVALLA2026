@@ -47,18 +47,45 @@ def es_figura_emergencia_principal(figure: Any) -> bool:
         names = " ".join(str(getattr(trace, "name", "") or "").lower() for trace in figure.data)
     except Exception:
         return False
-    return ("emergencia" in title and "dinámica" in title) or "tasa diaria simulada" in names
+    return "emerg" in title and (
+        "dinám" in title or "fisiol" in title or "tasa diaria" in names or "simulad" in names
+    )
 
 
-def aplicar_area_pronostico(figure: Any, data: Any) -> Any:
+def _rango_temporal_figura(figure: Any) -> tuple[pd.Timestamp, pd.Timestamp] | None:
+    fechas: list[pd.Timestamp] = []
+    try:
+        for trace in figure.data:
+            values = getattr(trace, "x", None)
+            if values is None:
+                continue
+            parsed = pd.to_datetime(pd.Series(list(values)), errors="coerce").dropna()
+            fechas.extend(pd.Timestamp(value).normalize() for value in parsed)
+    except Exception:
+        return None
+    if not fechas:
+        return None
+    return min(fechas), max(fechas)
+
+
+def aplicar_area_pronostico(figure: Any, data: Any = None) -> Any:
     if not es_figura_emergencia_principal(figure):
         return figure
+    start = end = None
     forecast = obtener_horizonte_pronostico(data)
-    if forecast.empty:
+    if not forecast.empty:
+        start = pd.Timestamp(forecast["Fecha"].min())
+        end = pd.Timestamp(forecast["Fecha"].max())
+    else:
+        rango = _rango_temporal_figura(figure)
+        if rango is not None:
+            today = pd.Timestamp.now().normalize()
+            _, maximum = rango
+            if maximum >= today:
+                start, end = today, maximum
+    if start is None or end is None:
         return figure
-    start = pd.Timestamp(forecast["Fecha"].min())
-    end = pd.Timestamp(forecast["Fecha"].max()) + pd.Timedelta(days=1)
-    figure.add_vrect(x0=start, x1=end, fillcolor=FORECAST_FILL, layer="below", line_width=0)
+    figure.add_vrect(x0=start, x1=end + pd.Timedelta(days=1), fillcolor=FORECAST_FILL, layer="below", line_width=0)
     return figure
 
 
@@ -84,3 +111,14 @@ def mostrar_horizonte_pronostico(data: Any, site_name: str) -> None:
     st.markdown("##### 🔭 Pronóstico de emergencia — detalle diario")
     st.caption(f"{site_name}: horizonte disponible del {start.strftime('%d-%m-%Y')} al {end.strftime('%d-%m-%Y')}. Eje Y en escala lineal EMERREL 0–1; no se agregan ni extrapolan días.")
     st.plotly_chart(figure, width="stretch", config={"displaylogo": False, "responsive": True, "scrollZoom": True, "modeBarButtonsToRemove": ["lasso2d", "select2d"]})
+
+
+if not getattr(st.plotly_chart, "_predweem_forecast_area", False):
+    _ORIGINAL_ST_PLOTLY_CHART = st.plotly_chart
+
+    def _plotly_chart_con_area_pronostico(figure: Any, *args: Any, **kwargs: Any):
+        aplicar_area_pronostico(figure)
+        return _ORIGINAL_ST_PLOTLY_CHART(figure, *args, **kwargs)
+
+    _plotly_chart_con_area_pronostico._predweem_forecast_area = True
+    st.plotly_chart = _plotly_chart_con_area_pronostico
