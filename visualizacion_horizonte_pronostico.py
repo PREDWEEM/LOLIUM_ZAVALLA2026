@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import pandas as pd
@@ -122,3 +123,9 @@ if not getattr(st.plotly_chart, "_predweem_forecast_area", False):
 
     _plotly_chart_con_area_pronostico._predweem_forecast_area = True
     st.plotly_chart = _plotly_chart_con_area_pronostico
+
+# app_zoom_operativo captura st.plotly_chart antes de importar este módulo.
+# Se reemplaza esa referencia por el renderizador ya decorado, sin tocar el motor.
+_zoom_operativo = sys.modules.get("app_zoom_operativo")
+if _zoom_operativo is not None and hasattr(_zoom_operativo, "_ORIGINAL_PLOTLY_CHART"):
+    _zoom_operativo._ORIGINAL_PLOTLY_CHART = st.plotly_chart
