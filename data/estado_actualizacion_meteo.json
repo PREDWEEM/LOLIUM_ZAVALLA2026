@@ -1,5 +1,5 @@
 {
-  "actualizado_en": "2026-08-23T07:49:33-03:00",
+  "actualizado_en": "2026-08-24T08:01:46-03:00",
   "modo": "HIBRIDO_ZAVALLA_INDEPENDIENTE",
   "descripcion": "Zavalla prioriza SMN Rosario Aero, completa con NOAA NCEI GSOD y utiliza Open-Meteo ECMWF IFS para faltantes y pronóstico. Los demás sitios conservan copia exacta de sus repositorios.",
   "sitios": {
@@ -7,10 +7,10 @@
       "modo": "hibrido_observado_pronosticado",
       "archivo_destino": "data/meteo_sitios/zavalla.csv",
       "archivo_raiz": "meteo_daily.csv",
-      "actualizado": "2026-08-23T07:48:35-03:00",
+      "actualizado": "2026-08-24T08:00:56-03:00",
       "inicio": "2026-01-01",
-      "fin": "2026-08-30",
-      "filas": 242,
+      "fin": "2026-08-31",
+      "filas": 243,
       "prioridad": [
         "SMN_WIS2_ROSARIO_AERO_87480",
         "NOAA_NCEI_GSOD_ROSARIO_AERO_87480",
@@ -31,7 +31,7 @@
           {
             "fuente": "OPEN_METEO_ECMWF_IFS_ARCHIVE_FALLBACK",
             "tipo": "Provisional",
-            "filas": 71
+            "filas": 72
           },
           {
             "fuente": "OPEN_METEO_ECMWF_IFS_FORECAST",
@@ -54,7 +54,7 @@
         {
           "fuente": "OPEN_METEO_ECMWF_IFS_ARCHIVE_FALLBACK",
           "tipo": "Provisional",
-          "filas": 71
+          "filas": 72
         },
         {
           "fuente": "OPEN_METEO_ECMWF_IFS_FORECAST",
