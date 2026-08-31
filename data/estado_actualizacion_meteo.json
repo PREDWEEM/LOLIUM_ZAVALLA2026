@@ -1,5 +1,5 @@
 {
-  "actualizado_en": "2026-08-30T11:55:46-03:00",
+  "actualizado_en": "2026-08-31T14:40:33-03:00",
   "modo": "HIBRIDO_ZAVALLA_INDEPENDIENTE",
   "descripcion": "Zavalla prioriza SMN Rosario Aero, completa con NOAA NCEI GSOD y utiliza Open-Meteo ECMWF IFS para faltantes y pronóstico. Los demás sitios conservan copia exacta de sus repositorios.",
   "sitios": {
@@ -7,10 +7,10 @@
       "modo": "hibrido_observado_pronosticado",
       "archivo_destino": "data/meteo_sitios/zavalla.csv",
       "archivo_raiz": "meteo_daily.csv",
-      "actualizado": "2026-08-30T11:54:48-03:00",
+      "actualizado": "2026-08-31T14:40:13-03:00",
       "inicio": "2026-01-01",
-      "fin": "2026-09-06",
-      "filas": 249,
+      "fin": "2026-09-07",
+      "filas": 250,
       "prioridad": [
         "SMN_WIS2_ROSARIO_AERO_87480",
         "NOAA_NCEI_GSOD_ROSARIO_AERO_87480",
@@ -20,8 +20,8 @@
       "diagnostico": {
         "smn": {
           "estado": "disponible",
-          "filas_con_temperatura": 170,
-          "filas_con_precipitacion": 28
+          "filas_con_temperatura": 11,
+          "filas_con_precipitacion": 0
         },
         "noaa": {
           "estado": "no_disponible",
@@ -31,7 +31,7 @@
           {
             "fuente": "OPEN_METEO_ECMWF_IFS_ARCHIVE_FALLBACK",
             "tipo": "Provisional",
-            "filas": 71
+            "filas": 231
           },
           {
             "fuente": "OPEN_METEO_ECMWF_IFS_FORECAST",
@@ -39,14 +39,9 @@
             "filas": 8
           },
           {
-            "fuente": "SMN_WIS2_ROSARIO_AERO_87480",
-            "tipo": "Observado",
-            "filas": 28
-          },
-          {
             "fuente": "SMN_WIS2_ROSARIO_AERO_87480+OPEN_METEO_ECMWF_IFS_ARCHIVE_FALLBACK",
             "tipo": "Provisional",
-            "filas": 142
+            "filas": 11
           }
         ]
       },
@@ -54,7 +49,7 @@
         {
           "fuente": "OPEN_METEO_ECMWF_IFS_ARCHIVE_FALLBACK",
           "tipo": "Provisional",
-          "filas": 71
+          "filas": 231
         },
         {
           "fuente": "OPEN_METEO_ECMWF_IFS_FORECAST",
@@ -62,14 +57,9 @@
           "filas": 8
         },
         {
-          "fuente": "SMN_WIS2_ROSARIO_AERO_87480",
-          "tipo": "Observado",
-          "filas": 28
-        },
-        {
           "fuente": "SMN_WIS2_ROSARIO_AERO_87480+OPEN_METEO_ECMWF_IFS_ARCHIVE_FALLBACK",
           "tipo": "Provisional",
-          "filas": 142
+          "filas": 11
         }
       ]
     }
